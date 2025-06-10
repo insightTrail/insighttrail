@@ -1,0 +1,4 @@
+graft insighttrail/templates
+graft insighttrail/static
+include LICENSE
+include README.md 
