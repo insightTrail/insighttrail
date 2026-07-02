@@ -229,14 +229,16 @@ class FileLogStore:
             cursor_id = int(cursor)
             filtered = [log for log in logs if int(log.get('_id', 0)) > cursor_id]
             page = filtered[:safe_limit]
+            has_more = len(filtered) > len(page)
         else:
             page = logs[-safe_limit:]
+            has_more = len(logs) > len(page)
 
         next_cursor = page[-1]['_id'] if page else (cursor if cursor is not None else 0)
         return {
             'logs': page,
             'cursor': next_cursor,
-            'has_more': len(logs) > len(page) if cursor is None else False,
+            'has_more': has_more,
         }
 
     def search_by_trace_id(self, trace_id):

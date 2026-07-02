@@ -111,7 +111,6 @@ class TestFastAPIDashboard:
         assert "metrics" in data
         assert "logger" in data
 
-
 class TestFastAPIExcelReports:
     def test_excel_report_generates(self, fastapi_client):
         fastapi_client.get("/")
