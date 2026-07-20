@@ -929,7 +929,29 @@
 
     async function refreshPackages(){ const body=document.getElementById('packagesBody'); if(!packageChecksEnabled){ body.innerHTML='<tr><td class="px-3 py-2" colspan="6">Disabled in ultra-light mode</td></tr>'; return; } body.innerHTML='<tr><td class="px-3 py-2" colspan="6">Loading...</td></tr>'; try { const response=await fetch(`${insightBaseUrl}/api/packages`); packagesData=await response.json(); applyPackageFilters(); } catch (_unused) { body.innerHTML='<tr><td class="px-3 py-2" colspan="6">Failed to load packages</td></tr>'; } }
 
-    async function refreshAll(){ if(searchMode||isPollingPaused) return; try { setRefreshing(true); const response=await fetch(`${insightBaseUrl}/api/analytics/logs?limit=150&cursor=${encodeURIComponent(logCursor)}`), payload=await response.json(); const incoming=payload.logs||[]; if(logCursor&&incoming.length) logs=logs.concat(incoming); else if(!logCursor){ logs=incoming; currentPage=1; } if(logs.length>500) logs=logs.slice(logs.length-500); metrics=payload.metrics||null; loggerStats=payload.logger||null; logCursor=Number(payload.cursor||logCursor||0); updateResourceTrend(); renderMetrics(); applyLogFilters(); renderCharts(); document.getElementById('lastRefresh').textContent=`(last refreshed ${new Date().toLocaleTimeString()})`; } catch(e){ console.error('Failed loading logs', e); } finally { setRefreshing(false); } }
+    async function refreshAll(){
+        if(searchMode||isPollingPaused) return;
+        try {
+            setRefreshing(true);
+            let cursor = logCursor, hasMore = true, incoming = [], latestPayload = null;
+            while (hasMore) {
+                const response = await fetch(`${insightBaseUrl}/api/analytics/logs?limit=1000&cursor=${encodeURIComponent(cursor)}`);
+                const payload = await response.json();
+                latestPayload = payload;
+                incoming = incoming.concat(payload.logs || []);
+                const previousCursor = cursor;
+                cursor = Number(payload.cursor || cursor || 0);
+                hasMore = Boolean(payload.has_more) && cursor !== previousCursor;
+                if (!payload.logs || payload.logs.length === 0) break;
+            }
+            if(logCursor&&incoming.length) logs=logs.concat(incoming);
+            else if(!logCursor){ logs=incoming; currentPage=1; }
+            metrics=latestPayload?.metrics||metrics; loggerStats=latestPayload?.logger||loggerStats; logCursor=cursor;
+            updateResourceTrend(); renderMetrics(); applyLogFilters(); renderCharts();
+            document.getElementById('lastRefresh').textContent=`(last refreshed ${new Date().toLocaleTimeString()})`;
+        } catch(e){ console.error('Failed loading logs', e); }
+        finally { setRefreshing(false); }
+    }
 
     async function searchLogs(){ const traceId=document.getElementById('traceInput').value.trim(); if(!traceId){ searchMode=false; logCursor=0; refreshAll(); return; } try { setRefreshing(true); searchMode=true; const response=await fetch(`${insightBaseUrl}/api/analytics/search?trace_id=${encodeURIComponent(traceId)}`), payload=await response.json(); logs=payload.logs||[]; currentPage=1; metrics=payload.metrics||null; loggerStats=payload.logger||null; updateResourceTrend(); renderMetrics(); applyLogFilters(); renderCharts(); if(logs.length>0){ logEntries[0]=logs[0]; openDetails(0); } else showCopyToast('No logs found for that trace ID'); } catch(e){ console.error('Search failed', e); } finally { setRefreshing(false); } }
 
