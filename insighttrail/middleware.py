@@ -258,16 +258,19 @@ class FlaskInsightTrail:
             if exception is not None:
                 if not self.track_internal_requests and request.path.startswith(self.url_prefix):
                     return
-                duration = time.time() - g.start_time
-                log_error(
-                    request,
-                    exception,
-                    duration,
-                    capture_runtime=self.capture_runtime,
-                    capture_system_metrics=self.capture_system_metrics,
-                    capture_env_vars=self.capture_env_vars,
-                    env_allowlist=self.env_allowlist,
-                )
+                try:
+                    duration = time.time() - g.start_time
+                    log_error(
+                        request,
+                        exception,
+                        duration,
+                        capture_runtime=self.capture_runtime,
+                        capture_system_metrics=self.capture_system_metrics,
+                        capture_env_vars=self.capture_env_vars,
+                        env_allowlist=self.env_allowlist,
+                    )
+                except Exception:
+                    pass
 
     def _parse_log_file(self):
         return self.log_store.all_cached() if hasattr(self.log_store, 'all_cached') else []
