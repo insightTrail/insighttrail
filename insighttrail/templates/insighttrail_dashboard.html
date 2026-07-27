@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-scheme="catppuccin" data-theme="dark">
+<html lang="en" data-scheme="{{ color_scheme }}" data-theme="{% if dark_mode == 'auto' %}light{% elif dark_mode %}dark{% else %}light{% endif %}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -562,11 +562,6 @@
                 <p class="mt-1" style="color:var(--muted)">Modern observability dashboard <span id="lastRefresh" class="refresh-text">(not refreshed yet)</span></p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-                <button id="themeToggle" class="btn btn-ghost rounded-lg px-3 py-2 text-sm" onclick="toggleTheme()"><span class="btn-icon">🌗</span>Theme</button>
-                <select id="schemeSelect" onchange="applyScheme(this.value)" class="rounded-lg border px-3 py-2 text-sm" style="border-color:var(--line); background:var(--surface); color:var(--text)">
-                    <option value="catppuccin">Catppuccin</option>
-                    <option value="orange">Orange</option>
-                </select>
                 <div class="relative">
                     <input id="traceInput" type="text" placeholder="Search by trace id" oninput="toggleClearButton()" class="w-72 rounded-lg border px-3 py-2 pr-8 text-sm" style="border-color:var(--line); background:var(--surface)">
                     <button id="clearTraceBtn" type="button" onclick="clearTraceSearch()" class="absolute right-2 top-1/2 -translate-y-1/2" style="color:var(--muted)">&times;</button>
@@ -719,27 +714,11 @@
     let latencyPlot = null, resourcePlot = null, resourceTrend = [];
     let logEntries = [];
 
-    function applyTheme(theme) {
-        document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('insighttrail_theme', theme);
-        renderCharts();
-    }
-    function toggleTheme() {
-        const current = document.documentElement.getAttribute('data-theme') || 'dark';
-        applyTheme(current === 'dark' ? 'light' : 'dark');
-    }
-    function applyScheme(scheme) {
-        document.documentElement.setAttribute('data-scheme', scheme);
-        localStorage.setItem('insighttrail_scheme', scheme);
-        document.getElementById('schemeSelect').value = scheme;
-        renderCharts();
-    }
     function init() {
-        const storedScheme = localStorage.getItem('insighttrail_scheme') || 'catppuccin';
-        const storedTheme = localStorage.getItem('insighttrail_theme') || (storedScheme === 'catppuccin' ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-scheme', storedScheme);
-        document.documentElement.setAttribute('data-theme', storedTheme);
-        document.getElementById('schemeSelect').value = storedScheme;
+        {% if dark_mode == 'auto' %}
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+        {% endif %}
         renderCharts();
     }
 
