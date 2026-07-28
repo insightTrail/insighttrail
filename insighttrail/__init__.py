@@ -35,7 +35,13 @@ def __getattr__(name):
     if name == 'FastAPIInsightTrail':
         from .fastapi_adapter import FastAPIInsightTrail
         return FastAPIInsightTrail
+    if name == 'load_config':
+        from .config import load_config
+        return load_config
+    if name == 'DEFAULT_CONFIG':
+        from .config import DEFAULT_CONFIG
+        return DEFAULT_CONFIG
     raise AttributeError(f"module 'insighttrail' has no attribute '{name}'")
 
 
-__all__ = ['InsightTrail', 'FlaskInsightTrail', 'FastAPIInsightTrail']
+__all__ = ['InsightTrail', 'FlaskInsightTrail', 'FastAPIInsightTrail', 'load_config', 'DEFAULT_CONFIG']

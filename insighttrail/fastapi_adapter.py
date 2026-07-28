@@ -167,6 +167,7 @@ class FastAPIInsightTrail:
         self.required_packages = self._load_required_packages(os.getcwd())
         self._dependency_cache = {}
         self._dependency_refresh_in_progress = False
+        self._dep_lock = threading.Lock()
 
         if self.log_storage == 'file' and log_file is None:
             log_file = os.path.join(os.getcwd(), 'logs', 'insighttrail.log')
@@ -277,14 +278,16 @@ class FastAPIInsightTrail:
 
     def _get_cached_dependency_info(self, package_name):
         now = time.time()
-        entry = self._dependency_cache.get(package_name)
+        with self._dep_lock:
+            entry = self._dependency_cache.get(package_name)
         if entry and (now - entry.get('fetched_at', 0) <= self.dependency_cache_ttl_seconds):
             return entry, True
 
         if not self.dependency_async_refresh:
             fresh = self._fetch_dependency_info(package_name)
             if fresh is not None:
-                self._dependency_cache[package_name] = fresh
+                with self._dep_lock:
+                    self._dependency_cache[package_name] = fresh
                 return fresh, True
 
         return entry, False
@@ -321,7 +324,8 @@ class FastAPIInsightTrail:
                 for package_name in unique_names:
                     data = self._fetch_dependency_info(package_name)
                     if data is not None:
-                        self._dependency_cache[package_name] = data
+                        with self._dep_lock:
+                            self._dependency_cache[package_name] = data
             finally:
                 self._dependency_refresh_in_progress = False
 

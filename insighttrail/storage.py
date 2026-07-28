@@ -2,7 +2,11 @@ import datetime
 import glob
 import json
 import os
+import logging
+import threading
 from collections import deque
+
+logger = logging.getLogger('insighttrail')
 
 try:
     from sqlalchemy import Boolean, Column, DateTime, Float, Integer, JSON, MetaData, String, Table, Text, create_engine, func, select
@@ -186,34 +190,36 @@ class FileLogStore:
         self._log_cache = deque(maxlen=cache_size)
         self._log_file_offset = 0
         self._next_log_id = 1
+        self._lock = threading.Lock()
 
     def _refresh_log_cache(self):
-        try:
-            if not self.log_file or not os.path.exists(self.log_file):
-                return
+        with self._lock:
+            try:
+                if not self.log_file or not os.path.exists(self.log_file):
+                    return
 
-            current_size = os.path.getsize(self.log_file)
-            if current_size < self._log_file_offset:
-                self._log_file_offset = 0
-                self._log_cache.clear()
-                self._next_log_id = 1
+                current_size = os.path.getsize(self.log_file)
+                if current_size < self._log_file_offset:
+                    self._log_file_offset = 0
+                    self._log_cache.clear()
+                    self._next_log_id = 1
 
-            with open(self.log_file, 'r', encoding='utf-8', errors='replace') as handle:
-                handle.seek(self._log_file_offset)
-                for line in handle:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        log_entry = json.loads(line)
-                        log_entry['_id'] = self._next_log_id
-                        self._next_log_id += 1
-                        self._log_cache.append(log_entry)
-                    except (json.JSONDecodeError, ValueError):
-                        continue
-                self._log_file_offset = handle.tell()
-        except Exception as exc:
-            print(f"Error reading log file: {exc}")
+                with open(self.log_file, 'r', encoding='utf-8', errors='replace') as handle:
+                    handle.seek(self._log_file_offset)
+                    for line in handle:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            log_entry = json.loads(line)
+                            log_entry['_id'] = self._next_log_id
+                            self._next_log_id += 1
+                            self._log_cache.append(log_entry)
+                        except (json.JSONDecodeError, ValueError):
+                            continue
+                    self._log_file_offset = handle.tell()
+            except Exception as exc:
+                logger.error("Error reading log file: %s", exc)
 
     def all_cached(self):
         self._refresh_log_cache()

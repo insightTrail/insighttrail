@@ -101,6 +101,7 @@ class FlaskInsightTrail:
         self.required_packages = self._load_required_packages(app.root_path)
         self._dependency_cache = {}
         self._dependency_refresh_in_progress = False
+        self._dep_lock = threading.Lock()
 
         if self.log_storage == 'file' and log_file is None:
             # Default to a 'logs' directory in the parent of the app's root path
@@ -208,14 +209,16 @@ class FlaskInsightTrail:
 
     def _get_cached_dependency_info(self, package_name):
         now = time.time()
-        entry = self._dependency_cache.get(package_name)
+        with self._dep_lock:
+            entry = self._dependency_cache.get(package_name)
         if entry and (now - entry.get('fetched_at', 0) <= self.dependency_cache_ttl_seconds):
             return entry, True
 
         if not self.dependency_async_refresh:
             fresh = self._fetch_dependency_info(package_name)
             if fresh is not None:
-                self._dependency_cache[package_name] = fresh
+                with self._dep_lock:
+                    self._dependency_cache[package_name] = fresh
                 return fresh, True
 
         return entry, False
@@ -252,7 +255,8 @@ class FlaskInsightTrail:
                 for package_name in unique_names:
                     data = self._fetch_dependency_info(package_name)
                     if data is not None:
-                        self._dependency_cache[package_name] = data
+                        with self._dep_lock:
+                            self._dependency_cache[package_name] = data
             finally:
                 self._dependency_refresh_in_progress = False
 
@@ -351,7 +355,7 @@ class FlaskInsightTrail:
                 page = self._get_logs_page(limit=limit, cursor=cursor)
                 return jsonify(page)
             except Exception as e:
-                print(f"Error in get_logs: {e}")
+                _insight_logger.error("Error in get_logs: %s", e)
                 return jsonify({"error": str(e)}), 500
 
         @insight_bp.route('/api/analytics/logs', methods=['GET'])
@@ -369,7 +373,7 @@ class FlaskInsightTrail:
                     'logger': get_logger_stats(),
                 })
             except Exception as e:
-                print(f"Error in fetch_logs: {e}")
+                _insight_logger.error("Error in fetch_logs: %s", e)
                 return jsonify({"error": str(e)}), 500
 
         @insight_bp.route('/api/analytics/search', methods=['GET'])
@@ -384,7 +388,7 @@ class FlaskInsightTrail:
                     'logger': get_logger_stats(),
                 })
             except Exception as e:
-                print(f"Error in search_by_trace_id: {e}")
+                _insight_logger.error("Error in search_by_trace_id: %s", e)
                 return jsonify({"error": str(e)}), 500
 
         @insight_bp.route('/api/reports/excel', methods=['GET'])
