@@ -169,6 +169,30 @@
             --modal-shadow: rgba(0, 0, 0, 0.35);
         }
 
+        /* ── Monochrome scheme ── */
+        [data-scheme="monochrome"] {
+            --bg: #f7f7f7; --surface: #ffffff; --surface-2: #eeeeee;
+            --text: #111111; --muted: #5f5f5f; --line: #d4d4d4; --line-strong: #111111;
+            --accent: #111111; --accent-2: #333333; --accent-rgb: 17, 17, 17; --accent-soft: #f0f0f0;
+            --shadow-sm: 0 1px 0 rgba(17, 17, 17, 0.10); --shadow-md: 0 2px 0 rgba(17, 17, 17, 0.16);
+            --grid-color: transparent; --chip-green-bg: #eeeeee; --chip-green-text: #111111;
+            --chip-yellow-bg: #eeeeee; --chip-yellow-text: #111111; --status-ok-bg: #eeeeee; --status-ok-text: #111111;
+            --status-err-bg: #111111; --status-err-text: #ffffff; --error-row-bg: #f3f3f3;
+            --shadow-btn: rgba(17, 17, 17, 0.18); --shadow-ecg: transparent; --shadow-mem: transparent;
+            --modal-backdrop: rgba(17, 17, 17, 0.42); --modal-shadow: rgba(17, 17, 17, 0.20);
+        }
+        [data-scheme="monochrome"][data-theme="dark"] {
+            --bg: #111111; --surface: #1b1b1b; --surface-2: #242424;
+            --text: #f5f5f5; --muted: #b5b5b5; --line: #3b3b3b; --line-strong: #f5f5f5;
+            --accent: #f5f5f5; --accent-2: #d5d5d5; --accent-rgb: 245, 245, 245; --accent-soft: #292929;
+            --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.10); --shadow-md: 0 2px 0 rgba(255, 255, 255, 0.16);
+            --grid-color: transparent; --chip-green-bg: #292929; --chip-green-text: #f5f5f5;
+            --chip-yellow-bg: #292929; --chip-yellow-text: #f5f5f5; --status-ok-bg: #292929; --status-ok-text: #f5f5f5;
+            --status-err-bg: #f5f5f5; --status-err-text: #111111; --error-row-bg: #252525;
+            --shadow-btn: rgba(255, 255, 255, 0.18); --shadow-ecg: transparent; --shadow-mem: transparent;
+            --modal-backdrop: rgba(0, 0, 0, 0.62); --modal-shadow: rgba(0, 0, 0, 0.40);
+        }
+
         body {
             font-family: "Google Sans Flex", ui-sans-serif, system-ui;
             color: var(--text);
@@ -206,6 +230,9 @@
             mask-image: radial-gradient(ellipse 85% 75% at 50% 40%, black 55%, transparent 95%);
             -webkit-mask-image: radial-gradient(ellipse 85% 75% at 50% 40%, black 55%, transparent 95%);
         }
+        [data-scheme="monochrome"] body::before,
+        [data-scheme="monochrome"] body::after { display: none; }
+        [data-scheme="monochrome"] .mem-bars span { background: var(--accent); }
 
         .panel {
             position: relative;
@@ -704,8 +731,8 @@
 <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
 {% endif %}
 <script>
-    const insightBaseUrl = "{{ insight_base_url|default('/insight') }}";
-    const uiRefreshSeconds = {{ ui_refresh_seconds|default(10) }};
+    const insightBaseUrl = {{ insight_base_url|default('/insight')|tojson }};
+    const uiRefreshSeconds = {{ ui_refresh_seconds|default(10)|tojson }};
     const chartsEnabled = {{ 'true' if enable_charts else 'false' }};
     const packageChecksEnabled = {{ 'true' if dependency_check else 'false' }};
     let logs = [], metrics = null, loggerStats = null, logCursor = 0, searchMode = false;
@@ -713,6 +740,12 @@
     let currentPage = 1, pageSize = 50, filteredLogs = [], packagesData = [];
     let latencyPlot = null, resourcePlot = null, resourceTrend = [];
     let logEntries = [];
+
+    function escapeHtml(value) {
+        return String(value ?? '-').replace(/[&<>"']/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[char]);
+    }
 
     function init() {
         {% if dark_mode == 'auto' %}
@@ -779,16 +812,17 @@
             const status = log.request?.status || 0, badgeClass = status >= 400 ? 'err' : 'ok';
             return `<tr>
                 <td class="px-3 py-2 whitespace-nowrap">${log.timestamp ? new Date(log.timestamp).toLocaleString() : '-'}</td>
-                <td class="px-3 py-2 font-code text-xs"><span class="trace-copy" onclick="copyTraceId('${(log.trace_id || '').replace(/'/g, "\\'")}')">${log.trace_id || '-'}</span></td>
-                <td class="px-3 py-2">${log.request?.path || '-'}</td>
-                <td class="px-3 py-2">${log.request?.method || '-'}</td>
-                <td class="px-3 py-2"><span class="status ${badgeClass}">${status || '-'}</span></td>
-                <td class="px-3 py-2">${(log.request?.duration_ms || 0).toFixed(2)}ms</td>
-                <td class="px-3 py-2">${log.request?.client || '-'}</td>
+                <td class="px-3 py-2 font-code text-xs"><span class="trace-copy" data-trace-id="${escapeHtml(log.trace_id || '')}">${escapeHtml(log.trace_id || '-')}</span></td>
+                <td class="px-3 py-2">${escapeHtml(log.request?.path || '-')}</td>
+                <td class="px-3 py-2">${escapeHtml(log.request?.method || '-')}</td>
+                <td class="px-3 py-2"><span class="status ${badgeClass}">${escapeHtml(status || '-')}</span></td>
+                <td class="px-3 py-2">${escapeHtml(Number(log.request?.duration_ms || 0).toFixed(2))}ms</td>
+                <td class="px-3 py-2">${escapeHtml(log.request?.client || '-')}</td>
                 <td class="px-3 py-2"><button class="btn btn-ghost rounded-md px-2 py-1 text-xs" onclick="openDetails(${(currentPage-1)*pageSize+idx})">View</button></td>
             </tr>`;
         }).join('');
         const rows = body.querySelectorAll('tr');
+        body.querySelectorAll('.trace-copy').forEach(node => node.addEventListener('click', () => copyTraceId(node.dataset.traceId || '')));
         pageRows.forEach((log, idx) => { logEntries[(currentPage-1)*pageSize+idx] = log; });
         pageRows.forEach((log, idx) => { if ((log.request?.status || 0) >= 400 && rows[idx]) rows[idx].classList.add('error-row'); });
         document.getElementById('pageInfo').textContent = `Page ${currentPage} / ${totalPages}`;
@@ -903,7 +937,7 @@
     function renderCharts(){ if(!chartsEnabled) return; const c = chartColors(); const recent=logs.slice(0,40).reverse(), x=recent.map((_,i)=>i+1), latency=recent.map(l=>l.request?.duration_ms||0), cpu=resourceTrend.map(p=>p.cpu), mem=resourceTrend.map(p=>p.mem), rx=resourceTrend.map((_,i)=>i+1); latencyPlot=createOrUpdatePlot(document.getElementById('latencyChart'),latencyPlot,[{label:'x'},{label:'Latency',stroke:c.latency,width:2}],[x,latency]); resourcePlot=createOrUpdatePlot(document.getElementById('resourceChart'),resourcePlot,[{label:'x'},{label:'CPU',stroke:c.cpu,width:2},{label:'Memory',stroke:c.mem,width:2}],[rx,cpu,mem]); }
     function updateResourceTrend(){ const cpu=Number(metrics?.system_metrics?.cpu_percent ?? 0), mem=Number(metrics?.system_metrics?.memory_percent ?? 0); resourceTrend.push({cpu,mem}); if(resourceTrend.length>40) resourceTrend=resourceTrend.slice(resourceTrend.length-40); }
 
-    function renderPackagesTable(items){ const body=document.getElementById('packagesBody'); body.innerHTML = items.slice(0,300).map(pkg => `<tr><td class="px-3 py-2">${pkg.name}</td><td class="px-3 py-2"><span class="chip ${pkg.current_version===pkg.latest_version?'chip-green':'chip-yellow'}">${pkg.current_version}</span></td><td class="px-3 py-2"><span class="chip chip-green">${pkg.latest_version}</span></td><td class="px-3 py-2"><span class="chip ${pkg.stability==='stable'?'chip-green':'chip-yellow'}">${pkg.stability||'unknown'}</span></td><td class="px-3 py-2">${pkg.required?'yes':'no'}</td><td class="px-3 py-2">${pkg.description||'-'}</td></tr>`).join(''); }
+    function renderPackagesTable(items){ const body=document.getElementById('packagesBody'); body.innerHTML = items.slice(0,300).map(pkg => `<tr><td class="px-3 py-2">${escapeHtml(pkg.name)}</td><td class="px-3 py-2"><span class="chip ${pkg.current_version===pkg.latest_version?'chip-green':'chip-yellow'}">${escapeHtml(pkg.current_version)}</span></td><td class="px-3 py-2"><span class="chip chip-green">${escapeHtml(pkg.latest_version)}</span></td><td class="px-3 py-2"><span class="chip ${pkg.stability==='stable'?'chip-green':'chip-yellow'}">${escapeHtml(pkg.stability||'unknown')}</span></td><td class="px-3 py-2">${pkg.required?'yes':'no'}</td><td class="px-3 py-2">${escapeHtml(pkg.description||'-')}</td></tr>`).join(''); }
     function applyPackageFilters(){ const stability=document.getElementById('pkgStabilityFilter').value, required=document.getElementById('pkgRequiredFilter').value, search=document.getElementById('pkgSearch').value.trim().toLowerCase(); let f=packagesData.slice(); if(stability!=='all') f=f.filter(pkg => (pkg.stability||'').toLowerCase()===stability); if(required==='required') f=f.filter(pkg=>!!pkg.required); else if(required==='optional') f=f.filter(pkg=>!pkg.required); if(search) f=f.filter(pkg => `${pkg.name||''} ${pkg.description||''}`.toLowerCase().includes(search)); renderPackagesTable(f); }
 
     async function refreshPackages(){ const body=document.getElementById('packagesBody'); if(!packageChecksEnabled){ body.innerHTML='<tr><td class="px-3 py-2" colspan="6">Disabled in ultra-light mode</td></tr>'; return; } body.innerHTML='<tr><td class="px-3 py-2" colspan="6">Loading...</td></tr>'; try { const response=await fetch(`${insightBaseUrl}/api/packages`); packagesData=await response.json(); applyPackageFilters(); } catch (_unused) { body.innerHTML='<tr><td class="px-3 py-2" colspan="6">Failed to load packages</td></tr>'; } }

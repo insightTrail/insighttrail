@@ -272,6 +272,9 @@ class FlaskInsightTrail:
 
         @app.after_request
         def after_request(response):
+            response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+            response.headers.setdefault('X-Frame-Options', 'DENY')
+            response.headers.setdefault('Referrer-Policy', 'no-referrer')
             if not self.track_internal_requests and request.path.startswith(self.url_prefix):
                 return response
             duration = time.time() - g.start_time
@@ -356,7 +359,7 @@ class FlaskInsightTrail:
                 return jsonify(page)
             except Exception as e:
                 _insight_logger.error("Error in get_logs: %s", e)
-                return jsonify({"error": str(e)}), 500
+                return jsonify({"error": "Unable to load logs"}), 500
 
         @insight_bp.route('/api/analytics/logs', methods=['GET'])
         def fetch_logs():
@@ -374,7 +377,7 @@ class FlaskInsightTrail:
                 })
             except Exception as e:
                 _insight_logger.error("Error in fetch_logs: %s", e)
-                return jsonify({"error": str(e)}), 500
+                return jsonify({"error": "Unable to load analytics"}), 500
 
         @insight_bp.route('/api/analytics/search', methods=['GET'])
         def search_by_trace_id():
@@ -389,7 +392,7 @@ class FlaskInsightTrail:
                 })
             except Exception as e:
                 _insight_logger.error("Error in search_by_trace_id: %s", e)
-                return jsonify({"error": str(e)}), 500
+                return jsonify({"error": "Unable to search logs"}), 500
 
         @insight_bp.route('/api/reports/excel', methods=['GET'])
         def export_excel_report():
@@ -410,7 +413,7 @@ class FlaskInsightTrail:
             except ValueError as e:
                 return jsonify({'error': str(e)}), 400
             except Exception as e:
-                return jsonify({'error': f'Failed to generate report: {e}'}), 500
+                return jsonify({'error': 'Failed to generate report'}), 500
 
         @insight_bp.route('/api/reports/estimate', methods=['GET'])
         def estimate_excel_report_rows():
@@ -427,7 +430,7 @@ class FlaskInsightTrail:
             except ValueError as e:
                 return jsonify({'error': str(e)}), 400
             except Exception as e:
-                return jsonify({'error': f'Failed to estimate rows: {e}'}), 500
+                return jsonify({'error': 'Failed to estimate report rows'}), 500
 
         self.app.register_blueprint(insight_bp)
 
@@ -580,6 +583,5 @@ class FlaskInsightTrail:
         workbook.save(output)
         output.seek(0)
         return output
-
 
 

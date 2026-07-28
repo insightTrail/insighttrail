@@ -45,6 +45,9 @@ class _FastAPIInsightMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
+            response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+            response.headers.setdefault('X-Frame-Options', 'DENY')
+            response.headers.setdefault('Referrer-Policy', 'no-referrer')
             duration = time.time() - start_time
             if not self.track_internal_requests and is_internal:
                 return response
@@ -390,8 +393,8 @@ class FastAPIInsightTrail:
                 return StreamingResponse(workbook_bytes, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             except ValueError as e:
                 return JSONResponse({'error': str(e)}, status_code=400)
-            except Exception as e:
-                return JSONResponse({'error': f'Failed to generate report: {e}'}, status_code=500)
+            except Exception:
+                return JSONResponse({'error': 'Failed to generate report'}, status_code=500)
 
         @router.get('/api/reports/estimate')
         async def estimate_excel_report_rows(preset: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None):
@@ -407,8 +410,8 @@ class FastAPIInsightTrail:
                 })
             except ValueError as e:
                 return JSONResponse({'error': str(e)}, status_code=400)
-            except Exception as e:
-                return JSONResponse({'error': f'Failed to estimate rows: {e}'}, status_code=500)
+            except Exception:
+                return JSONResponse({'error': 'Failed to estimate report rows'}, status_code=500)
 
         self.app.include_router(router)
 

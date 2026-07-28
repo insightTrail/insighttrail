@@ -133,6 +133,8 @@ You can also configure InsightTrail via a YAML file. Place an `insighttrail.yaml
 ```yaml
 insighttrail:
   log_file: null
+  log_storage: file
+  db_config: null
   log_level: INFO
   max_file_size: 1048576
   backup_count: 5
@@ -240,7 +242,9 @@ FlaskInsightTrail(
 | `enable_excel_reports` | `bool` | `True` | Enable Excel report export endpoint and UI action. |
 | `report_max_rows` | `int` | `200000` | Maximum rows included in a generated report. |
 | `report_timezone` | `str` | `'UTC'` | Report time basis label (current implementation uses UTC). |
-| `color_scheme` | `str` | `'orange'` | Dashboard color scheme: `'orange'` or `'catppuccin'`. |
+| `log_storage` | `str` | `'file'` | Log backend: `'file'` or `'db'`. |
+| `db_config` | `dict | None` | `None` | Database backend configuration when `log_storage='db'`. |
+| `color_scheme` | `str` | `'orange'` | Dashboard color scheme: `'orange'`, `'catppuccin'`, or minimal black-and-white `'monochrome'`. |
 | `dark_mode` | `bool \| str` | `False` | Dashboard theme: `true` (dark), `false` (light), or `'auto'` (follows system preference). |
 | `config_path` | `str \| None` | `None` | Path to YAML config file. Explicit keyword arguments override YAML values. |
 

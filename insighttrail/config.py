@@ -3,6 +3,8 @@ import yaml
 
 DEFAULT_CONFIG = {
     'log_file': None,
+    'log_storage': 'file',
+    'db_config': None,
     'log_level': 'INFO',
     'max_file_size': 1048576,
     'backup_count': 5,
@@ -63,9 +65,11 @@ def validate_config(config):
         errors.append('dependency_cache_ttl_seconds must be >= 60')
     if config.get('dependency_request_timeout', 2) < 1:
         errors.append('dependency_request_timeout must be >= 1')
+    if config.get('log_storage', 'file') not in ('file', 'db'):
+        errors.append("log_storage must be 'file' or 'db'")
     scheme = config.get('color_scheme', 'orange')
-    if scheme not in ('orange', 'catppuccin'):
-        errors.append("color_scheme must be 'orange' or 'catppuccin'")
+    if scheme not in ('orange', 'catppuccin', 'monochrome'):
+        errors.append("color_scheme must be 'orange', 'catppuccin', or 'monochrome'")
     dm = config.get('dark_mode', False)
     if dm not in (True, False, 'auto'):
         errors.append("dark_mode must be true, false, or 'auto'")
