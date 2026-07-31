@@ -126,6 +126,61 @@ FlaskInsightTrail(
 )
 ```
 
+### YAML Configuration
+
+You can also configure InsightTrail via a YAML file. Place an `insighttrail.yaml` in your project root:
+
+```yaml
+insighttrail:
+  log_file: null
+  log_storage: file
+  db_config: null
+  log_level: INFO
+  max_file_size: 1048576
+  backup_count: 5
+  enable_ui: true
+  url_prefix: /insight
+  capture_runtime: false
+  capture_system_metrics: false
+  capture_env_vars: false
+  env_allowlist: []
+  dependency_check: null
+  ultra_light_mode: false
+  enable_charts: null
+  ui_refresh_seconds: 10
+  track_internal_requests: false
+  async_logging: true
+  log_queue_size: 5000
+  success_log_sample_rate: 1.0
+  slow_request_threshold_ms: null
+  dependency_cache_ttl_seconds: 21600
+  dependency_async_refresh: true
+  dependency_request_timeout: 2
+  enable_excel_reports: true
+  report_max_rows: 200000
+  report_timezone: UTC
+  color_scheme: orange
+  dark_mode: false
+```
+
+Then pass the path when initializing:
+
+```python
+FlaskInsightTrail(app, config_path='insighttrail.yaml')
+```
+
+Or combine YAML with explicit overrides:
+
+```python
+FlaskInsightTrail(app, config_path='insighttrail.yaml', log_level='DEBUG')
+```
+
+YAML config file search order (if no `config_path` passed):
+1. `./insighttrail.yaml`
+2. `./insighttrail.yml`
+3. `~/.config/insighttrail/config.yaml`
+4. `~/.config/insighttrail/config.yml`
+
 ### Important Defaults
 - `capture_runtime=False`
 - `capture_env_vars=False`
@@ -187,6 +242,11 @@ FlaskInsightTrail(
 | `enable_excel_reports` | `bool` | `True` | Enable Excel report export endpoint and UI action. |
 | `report_max_rows` | `int` | `200000` | Maximum rows included in a generated report. |
 | `report_timezone` | `str` | `'UTC'` | Report time basis label (current implementation uses UTC). |
+| `log_storage` | `str` | `'file'` | Log backend: `'file'` or `'db'`. |
+| `db_config` | `dict | None` | `None` | Database backend configuration when `log_storage='db'`. |
+| `color_scheme` | `str` | `'orange'` | Dashboard color scheme: `'orange'`, `'catppuccin'`, or minimal black-and-white `'monochrome'`. |
+| `dark_mode` | `bool \| str` | `False` | Dashboard theme: `true` (dark), `false` (light), or `'auto'` (follows system preference). |
+| `config_path` | `str \| None` | `None` | Path to YAML config file. Explicit keyword arguments override YAML values. |
 
 ## Dashboard
 The dashboard includes:

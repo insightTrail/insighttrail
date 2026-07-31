@@ -6,8 +6,10 @@ from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from .logger import setup_logger, log_request, log_error, get_logger_stats, should_log_success
 from .metrics import record_metrics, get_metrics
-from .storage import create_log_store
 from .traces import trace_request
+from .storage import create_log_store
+from .config import load_config as _load_config
+from .logger import logger as _insight_logger
 import importlib.metadata
 import requests
 from openpyxl import Workbook
@@ -24,7 +26,9 @@ class FlaskInsightTrail:
                  dependency_cache_ttl_seconds=21600, dependency_async_refresh=True,
                  dependency_request_timeout=2, enable_excel_reports=True,
                  report_max_rows=200000, report_timezone='UTC',
-                 log_storage='file', db_config=None):
+                 log_storage='file', db_config=None,
+                 color_scheme='orange', dark_mode=False,
+                 config_path=None):
         """
         Initialize InsightTrail middleware.
 
@@ -36,7 +40,39 @@ class FlaskInsightTrail:
             backup_count: Number of backup files to keep
             enable_ui: Whether to enable the web UI (default: True)
             url_prefix: URL prefix for InsightTrail routes (default: /insight)
+            config_path: Path to YAML config file (overrides defaults)
         """
+        if config_path is not None:
+            _cfg = _load_config(config_path)
+            log_file = _cfg.get('log_file', log_file)
+            log_level = _cfg.get('log_level', log_level)
+            max_file_size = _cfg.get('max_file_size', max_file_size)
+            backup_count = _cfg.get('backup_count', backup_count)
+            enable_ui = _cfg.get('enable_ui', enable_ui)
+            url_prefix = _cfg.get('url_prefix', url_prefix)
+            capture_runtime = _cfg.get('capture_runtime', capture_runtime)
+            capture_system_metrics = _cfg.get('capture_system_metrics', capture_system_metrics)
+            capture_env_vars = _cfg.get('capture_env_vars', capture_env_vars)
+            env_allowlist = _cfg.get('env_allowlist', env_allowlist)
+            dependency_check = _cfg.get('dependency_check', dependency_check)
+            ultra_light_mode = _cfg.get('ultra_light_mode', ultra_light_mode)
+            enable_charts = _cfg.get('enable_charts', enable_charts)
+            ui_refresh_seconds = _cfg.get('ui_refresh_seconds', ui_refresh_seconds)
+            track_internal_requests = _cfg.get('track_internal_requests', track_internal_requests)
+            async_logging = _cfg.get('async_logging', async_logging)
+            log_queue_size = _cfg.get('log_queue_size', log_queue_size)
+            success_log_sample_rate = _cfg.get('success_log_sample_rate', success_log_sample_rate)
+            slow_request_threshold_ms = _cfg.get('slow_request_threshold_ms', slow_request_threshold_ms)
+            dependency_cache_ttl_seconds = _cfg.get('dependency_cache_ttl_seconds', dependency_cache_ttl_seconds)
+            dependency_async_refresh = _cfg.get('dependency_async_refresh', dependency_async_refresh)
+            dependency_request_timeout = _cfg.get('dependency_request_timeout', dependency_request_timeout)
+            enable_excel_reports = _cfg.get('enable_excel_reports', enable_excel_reports)
+            report_max_rows = _cfg.get('report_max_rows', report_max_rows)
+            report_timezone = _cfg.get('report_timezone', report_timezone)
+            log_storage = _cfg.get('log_storage', log_storage)
+            db_config = _cfg.get('db_config', db_config)
+            color_scheme = _cfg.get('color_scheme', color_scheme)
+            dark_mode = _cfg.get('dark_mode', dark_mode)
         self.app = app
         self.capture_runtime = capture_runtime
         self.capture_system_metrics = capture_system_metrics
@@ -57,12 +93,15 @@ class FlaskInsightTrail:
         self.report_max_rows = max(1000, int(report_max_rows))
         self.report_timezone = report_timezone
         self.ultra_light_mode = ultra_light_mode
+        self.color_scheme = color_scheme
+        self.dark_mode = dark_mode
         self.dependency_check = (not ultra_light_mode) if dependency_check is None else dependency_check
         self.enable_charts = (not ultra_light_mode) if enable_charts is None else enable_charts
         self.ui_refresh_seconds = max(2, int(ui_refresh_seconds))
         self.required_packages = self._load_required_packages(app.root_path)
         self._dependency_cache = {}
         self._dependency_refresh_in_progress = False
+        self._dep_lock = threading.Lock()
 
         if self.log_storage == 'file' and log_file is None:
             # Default to a 'logs' directory in the parent of the app's root path
@@ -170,14 +209,16 @@ class FlaskInsightTrail:
 
     def _get_cached_dependency_info(self, package_name):
         now = time.time()
-        entry = self._dependency_cache.get(package_name)
+        with self._dep_lock:
+            entry = self._dependency_cache.get(package_name)
         if entry and (now - entry.get('fetched_at', 0) <= self.dependency_cache_ttl_seconds):
             return entry, True
 
         if not self.dependency_async_refresh:
             fresh = self._fetch_dependency_info(package_name)
             if fresh is not None:
-                self._dependency_cache[package_name] = fresh
+                with self._dep_lock:
+                    self._dependency_cache[package_name] = fresh
                 return fresh, True
 
         return entry, False
@@ -214,7 +255,8 @@ class FlaskInsightTrail:
                 for package_name in unique_names:
                     data = self._fetch_dependency_info(package_name)
                     if data is not None:
-                        self._dependency_cache[package_name] = data
+                        with self._dep_lock:
+                            self._dependency_cache[package_name] = data
             finally:
                 self._dependency_refresh_in_progress = False
 
@@ -230,6 +272,9 @@ class FlaskInsightTrail:
 
         @app.after_request
         def after_request(response):
+            response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+            response.headers.setdefault('X-Frame-Options', 'DENY')
+            response.headers.setdefault('Referrer-Policy', 'no-referrer')
             if not self.track_internal_requests and request.path.startswith(self.url_prefix):
                 return response
             duration = time.time() - g.start_time
@@ -258,16 +303,19 @@ class FlaskInsightTrail:
             if exception is not None:
                 if not self.track_internal_requests and request.path.startswith(self.url_prefix):
                     return
-                duration = time.time() - g.start_time
-                log_error(
-                    request,
-                    exception,
-                    duration,
-                    capture_runtime=self.capture_runtime,
-                    capture_system_metrics=self.capture_system_metrics,
-                    capture_env_vars=self.capture_env_vars,
-                    env_allowlist=self.env_allowlist,
-                )
+                try:
+                    duration = time.time() - g.start_time
+                    log_error(
+                        request,
+                        exception,
+                        duration,
+                        capture_runtime=self.capture_runtime,
+                        capture_system_metrics=self.capture_system_metrics,
+                        capture_env_vars=self.capture_env_vars,
+                        env_allowlist=self.env_allowlist,
+                    )
+                except Exception:
+                    pass
 
     def _parse_log_file(self):
         return self.log_store.all_cached() if hasattr(self.log_store, 'all_cached') else []
@@ -294,6 +342,8 @@ class FlaskInsightTrail:
                 ui_refresh_seconds=self.ui_refresh_seconds,
                 enable_charts=self.enable_charts,
                 dependency_check=self.dependency_check,
+                color_scheme=self.color_scheme,
+                dark_mode=self.dark_mode,
             )
 
         @insight_bp.route('/api/packages')
@@ -308,8 +358,8 @@ class FlaskInsightTrail:
                 page = self._get_logs_page(limit=limit, cursor=cursor)
                 return jsonify(page)
             except Exception as e:
-                print(f"Error in get_logs: {e}")
-                return jsonify({"error": str(e)}), 500
+                _insight_logger.error("Error in get_logs: %s", e)
+                return jsonify({"error": "Unable to load logs"}), 500
 
         @insight_bp.route('/api/analytics/logs', methods=['GET'])
         def fetch_logs():
@@ -326,8 +376,8 @@ class FlaskInsightTrail:
                     'logger': get_logger_stats(),
                 })
             except Exception as e:
-                print(f"Error in fetch_logs: {e}")
-                return jsonify({"error": str(e)}), 500
+                _insight_logger.error("Error in fetch_logs: %s", e)
+                return jsonify({"error": "Unable to load analytics"}), 500
 
         @insight_bp.route('/api/analytics/search', methods=['GET'])
         def search_by_trace_id():
@@ -341,8 +391,8 @@ class FlaskInsightTrail:
                     'logger': get_logger_stats(),
                 })
             except Exception as e:
-                print(f"Error in search_by_trace_id: {e}")
-                return jsonify({"error": str(e)}), 500
+                _insight_logger.error("Error in search_by_trace_id: %s", e)
+                return jsonify({"error": "Unable to search logs"}), 500
 
         @insight_bp.route('/api/reports/excel', methods=['GET'])
         def export_excel_report():
@@ -363,7 +413,7 @@ class FlaskInsightTrail:
             except ValueError as e:
                 return jsonify({'error': str(e)}), 400
             except Exception as e:
-                return jsonify({'error': f'Failed to generate report: {e}'}), 500
+                return jsonify({'error': 'Failed to generate report'}), 500
 
         @insight_bp.route('/api/reports/estimate', methods=['GET'])
         def estimate_excel_report_rows():
@@ -374,13 +424,13 @@ class FlaskInsightTrail:
                 estimated_rows = self._estimate_logs_for_range(start_dt, end_dt)
                 return jsonify({
                     'estimated_rows': estimated_rows,
-                    'report_max_rows': self.report_max_rows,
-                    'truncated': estimated_rows >= self.report_max_rows,
+        'report_max_rows': self.report_max_rows,
+        'truncated': estimated_rows >= self.report_max_rows,
                 })
             except ValueError as e:
                 return jsonify({'error': str(e)}), 400
             except Exception as e:
-                return jsonify({'error': f'Failed to estimate rows: {e}'}), 500
+                return jsonify({'error': 'Failed to estimate report rows'}), 500
 
         self.app.register_blueprint(insight_bp)
 
@@ -533,4 +583,5 @@ class FlaskInsightTrail:
         workbook.save(output)
         output.seek(0)
         return output
+
 

@@ -68,7 +68,6 @@ class TestMiddlewareInit:
 class TestRequestLogging:
     def test_successful_request_logged(self, flask_client, flask_app):
         flask_client.get("/")
-        time.sleep(0.1)
         with open(flask_app.insighttrail_middleware.log_file) as f:
             lines = [l for l in f.readlines() if l.strip()]
         assert len(lines) >= 1
@@ -78,7 +77,6 @@ class TestRequestLogging:
 
     def test_error_request_logged(self, flask_client, flask_app):
         flask_client.get("/error")
-        time.sleep(0.1)
         with open(flask_app.insighttrail_middleware.log_file) as f:
             lines = [l for l in f.readlines() if l.strip()]
         error_entries = [json.loads(l) for l in lines if json.loads(l).get("error")]
@@ -87,7 +85,6 @@ class TestRequestLogging:
 
     def test_trace_id_present_in_log(self, flask_client, flask_app):
         flask_client.get("/")
-        time.sleep(0.1)
         with open(flask_app.insighttrail_middleware.log_file) as f:
             lines = [l for l in f.readlines() if l.strip()]
         entry = json.loads(lines[0])
@@ -97,7 +94,6 @@ class TestRequestLogging:
     def test_internal_requests_excluded(self, flask_client, flask_app):
         flask_client.get("/")
         flask_client.get("/insight/api/packages")
-        time.sleep(0.1)
         with open(flask_app.insighttrail_middleware.log_file) as f:
             lines = [l for l in f.readlines() if l.strip()]
         paths = [json.loads(l)["request"]["path"] for l in lines]
@@ -124,7 +120,6 @@ class TestRequestLogging:
         )
         client = app.test_client()
         client.get("/slow")
-        time.sleep(0.1)
         with open(mw.log_file) as f:
             lines = [l for l in f.readlines() if l.strip()]
         slow_entries = [
@@ -150,17 +145,35 @@ class TestRequestLogging:
         )
         client = app.test_client()
         client.get("/")
-        time.sleep(0.1)
         with open(mw.log_file) as f:
             content = f.read()
         assert content.strip() == ""
 
 
 class TestDashboardUI:
+    def test_monochrome_theme_is_rendered_without_background_effects(self, tmp_path):
+        app = Flask(__name__)
+        FlaskInsightTrail(
+            app,
+            log_file=str(tmp_path / 'theme.log'),
+            enable_ui=True,
+            color_scheme='monochrome',
+            async_logging=False,
+            dependency_check=False,
+        )
+        response = app.test_client().get('/insight/')
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert 'data-scheme="monochrome"' in html
+        assert '[data-scheme="monochrome"] body::before' in html
+        assert 'function escapeHtml' in html
+
     def test_dashboard_renders(self, flask_client):
         resp = flask_client.get("/insight/")
         assert resp.status_code == 200
         assert b"<!DOCTYPE html>" in resp.data or b"<html" in resp.data
+        assert resp.headers['X-Content-Type-Options'] == 'nosniff'
+        assert resp.headers['X-Frame-Options'] == 'DENY'
 
     def test_api_packages_returns_list(self, flask_client):
         resp = flask_client.get("/insight/api/packages")
@@ -170,7 +183,6 @@ class TestDashboardUI:
 
     def test_api_analytics_returns_metrics(self, flask_client):
         flask_client.get("/")
-        time.sleep(0.1)
         resp = flask_client.get("/insight/api/analytics/logs")
         assert resp.status_code == 200
         data = resp.get_json()
@@ -191,7 +203,6 @@ class TestDashboardUI:
 class TestExcelReports:
     def test_excel_report_generates(self, flask_client):
         flask_client.get("/")
-        time.sleep(0.1)
         resp = flask_client.get("/insight/api/reports/excel?preset=1d")
         assert resp.status_code == 200
         assert resp.content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

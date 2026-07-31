@@ -48,3 +48,6 @@ __pycache__/
 
 .log
 *.log*
+
+# notes
+todo.md

@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .logger import get_logger_stats, get_runtime_info, get_system_metrics as get_log_system_metrics, logger, setup_logger, should_log_success
 from .metrics import get_metrics, record_metrics
 from .storage import create_log_store
+from .config import load_config as _load_config
 
 
 class _FastAPIInsightMiddleware(BaseHTTPMiddleware):
@@ -44,6 +45,9 @@ class _FastAPIInsightMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
+            response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+            response.headers.setdefault('X-Frame-Options', 'DENY')
+            response.headers.setdefault('Referrer-Policy', 'no-referrer')
             duration = time.time() - start_time
             if not self.track_internal_requests and is_internal:
                 return response
@@ -105,7 +109,40 @@ class FastAPIInsightTrail:
                  dependency_cache_ttl_seconds=21600, dependency_async_refresh=True,
                  dependency_request_timeout=2, enable_excel_reports=True,
                  report_max_rows=200000, report_timezone='UTC',
-                 log_storage='file', db_config=None):
+                 log_storage='file', db_config=None,
+                 color_scheme='orange', dark_mode=False,
+                 config_path=None):
+        if config_path is not None:
+            _cfg = _load_config(config_path)
+            log_file = _cfg.get('log_file', log_file)
+            log_level = _cfg.get('log_level', log_level)
+            max_file_size = _cfg.get('max_file_size', max_file_size)
+            backup_count = _cfg.get('backup_count', backup_count)
+            enable_ui = _cfg.get('enable_ui', enable_ui)
+            url_prefix = _cfg.get('url_prefix', url_prefix)
+            capture_runtime = _cfg.get('capture_runtime', capture_runtime)
+            capture_system_metrics = _cfg.get('capture_system_metrics', capture_system_metrics)
+            capture_env_vars = _cfg.get('capture_env_vars', capture_env_vars)
+            env_allowlist = _cfg.get('env_allowlist', env_allowlist)
+            dependency_check = _cfg.get('dependency_check', dependency_check)
+            ultra_light_mode = _cfg.get('ultra_light_mode', ultra_light_mode)
+            enable_charts = _cfg.get('enable_charts', enable_charts)
+            ui_refresh_seconds = _cfg.get('ui_refresh_seconds', ui_refresh_seconds)
+            track_internal_requests = _cfg.get('track_internal_requests', track_internal_requests)
+            async_logging = _cfg.get('async_logging', async_logging)
+            log_queue_size = _cfg.get('log_queue_size', log_queue_size)
+            success_log_sample_rate = _cfg.get('success_log_sample_rate', success_log_sample_rate)
+            slow_request_threshold_ms = _cfg.get('slow_request_threshold_ms', slow_request_threshold_ms)
+            dependency_cache_ttl_seconds = _cfg.get('dependency_cache_ttl_seconds', dependency_cache_ttl_seconds)
+            dependency_async_refresh = _cfg.get('dependency_async_refresh', dependency_async_refresh)
+            dependency_request_timeout = _cfg.get('dependency_request_timeout', dependency_request_timeout)
+            enable_excel_reports = _cfg.get('enable_excel_reports', enable_excel_reports)
+            report_max_rows = _cfg.get('report_max_rows', report_max_rows)
+            report_timezone = _cfg.get('report_timezone', report_timezone)
+            log_storage = _cfg.get('log_storage', log_storage)
+            db_config = _cfg.get('db_config', db_config)
+            color_scheme = _cfg.get('color_scheme', color_scheme)
+            dark_mode = _cfg.get('dark_mode', dark_mode)
         self.app = app
         self.capture_runtime = capture_runtime
         self.capture_system_metrics = capture_system_metrics
@@ -125,12 +162,15 @@ class FastAPIInsightTrail:
         self.report_max_rows = max(1000, int(report_max_rows))
         self.report_timezone = report_timezone
         self.ultra_light_mode = ultra_light_mode
+        self.color_scheme = color_scheme
+        self.dark_mode = dark_mode
         self.dependency_check = (not ultra_light_mode) if dependency_check is None else dependency_check
         self.enable_charts = (not ultra_light_mode) if enable_charts is None else enable_charts
         self.ui_refresh_seconds = max(2, int(ui_refresh_seconds))
         self.required_packages = self._load_required_packages(os.getcwd())
         self._dependency_cache = {}
         self._dependency_refresh_in_progress = False
+        self._dep_lock = threading.Lock()
 
         if self.log_storage == 'file' and log_file is None:
             log_file = os.path.join(os.getcwd(), 'logs', 'insighttrail.log')
@@ -241,14 +281,16 @@ class FastAPIInsightTrail:
 
     def _get_cached_dependency_info(self, package_name):
         now = time.time()
-        entry = self._dependency_cache.get(package_name)
+        with self._dep_lock:
+            entry = self._dependency_cache.get(package_name)
         if entry and (now - entry.get('fetched_at', 0) <= self.dependency_cache_ttl_seconds):
             return entry, True
 
         if not self.dependency_async_refresh:
             fresh = self._fetch_dependency_info(package_name)
             if fresh is not None:
-                self._dependency_cache[package_name] = fresh
+                with self._dep_lock:
+                    self._dependency_cache[package_name] = fresh
                 return fresh, True
 
         return entry, False
@@ -285,7 +327,8 @@ class FastAPIInsightTrail:
                 for package_name in unique_names:
                     data = self._fetch_dependency_info(package_name)
                     if data is not None:
-                        self._dependency_cache[package_name] = data
+                        with self._dep_lock:
+                            self._dependency_cache[package_name] = data
             finally:
                 self._dependency_refresh_in_progress = False
 
@@ -308,6 +351,8 @@ class FastAPIInsightTrail:
                 ui_refresh_seconds=self.ui_refresh_seconds,
                 enable_charts=self.enable_charts,
                 dependency_check=self.dependency_check,
+                color_scheme=self.color_scheme,
+                dark_mode=self.dark_mode,
             ))
 
         @router.get('/api/packages')
@@ -348,8 +393,8 @@ class FastAPIInsightTrail:
                 return StreamingResponse(workbook_bytes, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             except ValueError as e:
                 return JSONResponse({'error': str(e)}, status_code=400)
-            except Exception as e:
-                return JSONResponse({'error': f'Failed to generate report: {e}'}, status_code=500)
+            except Exception:
+                return JSONResponse({'error': 'Failed to generate report'}, status_code=500)
 
         @router.get('/api/reports/estimate')
         async def estimate_excel_report_rows(preset: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None):
@@ -365,8 +410,8 @@ class FastAPIInsightTrail:
                 })
             except ValueError as e:
                 return JSONResponse({'error': str(e)}, status_code=400)
-            except Exception as e:
-                return JSONResponse({'error': f'Failed to estimate rows: {e}'}, status_code=500)
+            except Exception:
+                return JSONResponse({'error': 'Failed to estimate report rows'}, status_code=500)
 
         self.app.include_router(router)
 

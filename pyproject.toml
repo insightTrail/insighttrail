@@ -30,6 +30,7 @@ dependencies = [
     "psutil",
     "requests",
     "openpyxl",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]
@@ -54,6 +55,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+python_files = ["test_*.py", "integration_*.py"]
 addopts = "-v --tb=short"
 
 [tool.setuptools]

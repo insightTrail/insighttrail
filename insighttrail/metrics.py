@@ -11,10 +11,18 @@ START_TIME = time.time()
 PROCESS_START_TIMES = {}
 RESTART_COUNT = 0
 
+
+def _connection_count(process):
+    """Return a process connection count across supported psutil versions."""
+    connection_method = getattr(process, 'net_connections', None)
+    if connection_method is None:
+        connection_method = process.connections
+    return len(connection_method())
+
 def get_process_info():
     current_process = psutil.Process()
     workers = []
-    
+
     try:
         # First, try to get the parent process if we're a worker
         parent = current_process.parent()
@@ -33,7 +41,7 @@ def get_process_info():
                 if "waitress" in proc.name().lower() or (parent and proc.ppid() == parent.pid):
                     cpu_percent = proc.cpu_percent(interval=0.1)
                     memory_percent = proc.memory_percent()
-                    
+
                     worker_info = {
                         'pid': proc.pid,
                         'cpu_percent': cpu_percent,
@@ -42,7 +50,7 @@ def get_process_info():
                         'create_time': datetime.fromtimestamp(proc.create_time()).isoformat(),
                         'name': proc.name(),
                         'threads': proc.num_threads(),
-                        'connections': len(proc.connections()),
+                        'connections': _connection_count(proc),
                     }
                     workers.append(worker_info)
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
@@ -55,7 +63,7 @@ def get_process_info():
             'worker_count': len(workers),
             'cpu_cores': multiprocessing.cpu_count(),
             'total_threads': sum(worker['threads'] for worker in workers) + main_process.num_threads(),
-            'total_connections': sum(worker['connections'] for worker in workers) + len(main_process.connections())
+            'total_connections': sum(worker['connections'] for worker in workers) + _connection_count(main_process)
         }
     except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
         return {
@@ -65,7 +73,7 @@ def get_process_info():
             'worker_count': 0,
             'cpu_cores': multiprocessing.cpu_count(),
             'total_threads': current_process.num_threads(),
-            'total_connections': len(current_process.connections()),
+            'total_connections': _connection_count(current_process),
             'error': str(e)
         }
 
@@ -75,7 +83,7 @@ def get_system_metrics():
         'memory_percent': psutil.virtual_memory().percent,
         'disk_usage': psutil.disk_usage('/').percent,
         'open_files': len(psutil.Process().open_files()),
-        'connections': len(psutil.Process().connections()),
+        'connections': _connection_count(psutil.Process()),
         'load_avg': psutil.getloadavg() if hasattr(psutil, 'getloadavg') else None
     }
 
@@ -88,7 +96,7 @@ def record_metrics(request, response, duration):
     # Record process information
     current_process = psutil.Process()
     pid = current_process.pid
-    
+
     if pid not in PROCESS_START_TIMES:
         PROCESS_START_TIMES[pid] = time.time()
         global RESTART_COUNT
@@ -106,5 +114,5 @@ def get_metrics():
         'process_info': get_process_info(),
         'system_metrics': get_system_metrics()
     })
-    
+
     return metrics

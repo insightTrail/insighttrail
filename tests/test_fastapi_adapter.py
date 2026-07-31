@@ -32,7 +32,6 @@ class TestFastAPIInit:
 class TestFastAPIRequestLogging:
     def test_successful_request_logged(self, fastapi_client, fastapi_app):
         fastapi_client.get("/")
-        time.sleep(0.1)
         with open(fastapi_app.insighttrail_middleware.log_file) as f:
             lines = [l for l in f.readlines() if l.strip()]
         assert len(lines) >= 1
@@ -42,7 +41,6 @@ class TestFastAPIRequestLogging:
 
     def test_error_request_logged(self, fastapi_client, fastapi_app):
         fastapi_client.get("/error")
-        time.sleep(0.1)
         with open(fastapi_app.insighttrail_middleware.log_file) as f:
             lines = [l for l in f.readlines() if l.strip()]
         error_entries = [json.loads(l) for l in lines if json.loads(l).get("error")]
@@ -52,7 +50,6 @@ class TestFastAPIRequestLogging:
     def test_internal_requests_excluded(self, fastapi_client, fastapi_app):
         fastapi_client.get("/")
         fastapi_client.get("/insight/api/packages")
-        time.sleep(0.1)
         with open(fastapi_app.insighttrail_middleware.log_file) as f:
             lines = [l for l in f.readlines() if l.strip()]
         paths = [json.loads(l)["request"]["path"] for l in lines]
@@ -79,7 +76,6 @@ class TestFastAPIRequestLogging:
         )
         client = TestClient(app, raise_server_exceptions=False)
         client.get("/slow")
-        time.sleep(0.1)
         with open(log_file) as f:
             lines = [l for l in f.readlines() if l.strip()]
         slow_entries = [
@@ -90,10 +86,27 @@ class TestFastAPIRequestLogging:
 
 
 class TestFastAPIDashboard:
+    def test_monochrome_theme_is_rendered(self, tmp_path):
+        app = FastAPI()
+        FastAPIInsightTrail(
+            app,
+            log_file=str(tmp_path / 'theme.log'),
+            enable_ui=True,
+            color_scheme='monochrome',
+            async_logging=False,
+            dependency_check=False,
+        )
+        response = TestClient(app).get('/insight/')
+        assert response.status_code == 200
+        assert 'data-scheme="monochrome"' in response.text
+        assert 'function escapeHtml' in response.text
+
     def test_dashboard_renders(self, fastapi_client):
         resp = fastapi_client.get("/insight/")
         assert resp.status_code == 200
         assert "html" in resp.headers.get("content-type", "").lower()
+        assert resp.headers['x-content-type-options'] == 'nosniff'
+        assert resp.headers['x-frame-options'] == 'DENY'
 
     def test_api_packages_returns_list(self, fastapi_client):
         resp = fastapi_client.get("/insight/api/packages")
@@ -103,7 +116,6 @@ class TestFastAPIDashboard:
 
     def test_api_analytics_returns_data(self, fastapi_client):
         fastapi_client.get("/")
-        time.sleep(0.1)
         resp = fastapi_client.get("/insight/api/analytics/logs")
         assert resp.status_code == 200
         data = resp.json()
@@ -115,7 +127,6 @@ class TestFastAPIDashboard:
 class TestFastAPIExcelReports:
     def test_excel_report_generates(self, fastapi_client):
         fastapi_client.get("/")
-        time.sleep(0.1)
         resp = fastapi_client.get("/insight/api/reports/excel?preset=1d")
         assert resp.status_code == 200
         assert "spreadsheetml" in resp.headers.get("content-type", "")

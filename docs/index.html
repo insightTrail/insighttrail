@@ -727,6 +727,9 @@ FlaskInsightTrail(app)
               <tr><td>slow_request_threshold_ms</td><td>None</td><td>Always log requests slower than this</td></tr>
               <tr><td>ultra_light_mode</td><td>False</td><td>Disables heavy features (charts, network checks)</td></tr>
               <tr><td>enable_excel_reports</td><td>True</td><td>Enable Excel report export</td></tr>
+              <tr><td>color_scheme</td><td>'orange'</td><td>Dashboard color scheme: 'orange', 'catppuccin', or minimal black-and-white 'monochrome'</td></tr>
+              <tr><td>dark_mode</td><td>False</td><td>Dark mode: true, false, or 'auto' (system preference)</td></tr>
+              <tr><td>config_path</td><td>None</td><td>Path to YAML config file</td></tr>
             </tbody>
           </table>
         </div>
@@ -734,6 +737,25 @@ FlaskInsightTrail(app)
         <p style="margin-top: 1rem; color: var(--text-muted); font-size: 0.85rem; text-align: center;">
           <a href="https://github.com/insightTrail/insighttrail#configuration" style="color: var(--accent);">Full configuration reference →</a>
         </p>
+
+        <h3 style="margin-top: 2rem;">YAML Configuration</h3>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem;">
+          Place an <code>insighttrail.yaml</code> in your project root or pass <code>config_path</code> explicitly.
+        </p>
+
+        <pre><code><span style="color:var(--cat-green)"># insighttrail.yaml</span>
+<span style="color:var(--cat-blue)">insighttrail</span>:
+  <span style="color:var(--cat-teal)">log_level</span>: INFO
+  <span style="color:var(--cat-teal)">enable_ui</span>: <span style="color:var(--cat-peach)">true</span>
+  <span style="color:var(--cat-teal)">url_prefix</span>: /insight
+  <span style="color:var(--cat-teal)">color_scheme</span>: orange
+  <span style="color:var(--cat-teal)">dark_mode</span>: <span style="color:var(--cat-peach)">false</span></code></pre>
+
+        <pre style="margin-top: 0.75rem;"><code><span style="color:var(--cat-green)"># Python</span>
+<span style="color:var(--cat-mauve)">from</span> insighttrail <span style="color:var(--cat-mauve)">import</span> FlaskInsightTrail
+
+FlaskInsightTrail(app, <span style="color:var(--cat-blue)">config_path</span>=<span style="color:var(--cat-teal)">'insighttrail.yaml'</span>)
+FlaskInsightTrail(app, <span style="color:var(--cat-blue)">config_path</span>=<span style="color:var(--cat-teal)">'config.yaml'</span>, <span style="color:var(--cat-blue)">log_level</span>=<span style="color:var(--cat-teal)">'DEBUG'</span>)</code></pre>
       </div>
     </section>
   </main>
