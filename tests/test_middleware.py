@@ -187,7 +187,6 @@ class TestDashboardUI:
         assert "cursor" in data
         assert "has_more" in data
 
-
 class TestExcelReports:
     def test_excel_report_generates(self, flask_client):
         flask_client.get("/")
